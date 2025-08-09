@@ -685,7 +685,7 @@ class HFChat(LLMInterface):
 class OpenAIChat(LLMInterface):
     """LLM interface for OpenAI models."""
 
-    def __init__(self, model: str = "gpt-4o", api_key: str | None = None):
+    def __init__(self, model: str = "gpt-4o", api_key: str | None = None, base_url: str | None = None):
         self.model = model
         self.api_key = api_key or os.getenv("OPENAI_API_KEY")
 
@@ -699,7 +699,7 @@ class OpenAIChat(LLMInterface):
         try:
             import openai
 
-            self.client = openai.OpenAI(api_key=self.api_key)
+            self.client = openai.OpenAI(api_key=self.api_key, base_url=base_url)
         except ImportError:
             raise ImportError(
                 "The 'openai' library is required for OpenAI models. Please install it with 'pip install openai'."
@@ -774,7 +774,18 @@ def get_llm(llm_config: dict[str, Any] | None = None) -> LLMInterface:
     Returns:
         An instance of an LLMInterface subclass.
     """
-    if llm_config is None:
+    if os.getenv("USE_LITELLM_PROXY"):
+        lite_llm_api_key = llm_config.get("api_key") or os.getenv("LITELLM_API_KEY")
+        if lite_llm_api_key is None:
+            raise EnvironmentError("LITELLM_API_KEY must be set when using LiteLLM proxy.")
+        default_model = os.getenv("LITELLM_DEFAULT_MODEL") or "lmstudio/qwen3-4b-mlx"
+        llm_config = {
+            "type": "openai",
+            "model": llm_config.get("model", default_model),
+            "base_url": "http://localhost:4000/v1",
+            "api_key": lite_llm_api_key,
+        }
+    elif llm_config is None:
         llm_config = {
             "type": "openai",
             "model": "gpt-4o",
@@ -794,7 +805,7 @@ def get_llm(llm_config: dict[str, Any] | None = None) -> LLMInterface:
     elif llm_type == "hf":
         return HFChat(model_name=model or "deepseek-ai/deepseek-llm-7b-chat")
     elif llm_type == "openai":
-        return OpenAIChat(model=model or "gpt-4o", api_key=llm_config.get("api_key"))
+        return OpenAIChat(model=model or "gpt-4o", api_key=llm_config.get("api_key"), base_url=llm_config.get("base_url"))
     elif llm_type == "simulated":
         return SimulatedChat()
     else:
